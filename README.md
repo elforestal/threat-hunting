@@ -1,135 +1,112 @@
-# Threat Hunt Scenario: Data Exfiltration from Employee on PIP
-
-## Platforms and Tools Used
-- Windows 10 Virtual Machines (Microsoft Azure)
-- Endpoint Detection and Response (EDR): Microsoft Defender for Endpoint (MDE)
-- Kusto Query Language (KQL)
-- MITRE ATT&CK Framework
-
-## 1. Scenario Overview
-
-Management suspects that an employee, Mike Wiley, who was recently placed on a performance improvement plan (PIP), may be planning to exfiltrate sensitive company data. The employee has administrative access to their device (`LAB-WIN10`). The goal of this threat hunt is to detect any attempts to compress and transfer sensitive files to unauthorized locations and to mitigate potential risks.
-
-### Hypothesis
-Mike Wiley has local admin rights on his device and might try to archive/compress sensitive information and exfiltrate it to an external destination.
-
-### MITRE ATT&CK Threat Actor Tactics, Techniques, and Procedures (TTPs)
-- [**T1078 - Valid Accounts: Use of valid administrative credentials to bypass restrictions**](https://attack.mitre.org/techniques/T1078/)
-- [**T1560.001 - Archive Collected Data: Archive via Utility**](https://attack.mitre.org/techniques/T1560/001/)
-- [**T1059.001 - Command and Scripting Interpreter: PowerShell**](https://attack.mitre.org/techniques/T1059/001/)
-- [**T1567.002 - Exfiltration Over Web Service**](https://attack.mitre.org/techniques/T1567/002/)
----
-
-## 2. Data Collection & Analysis
-
-### Data Sources
-1. **File Events**: Activity on `.zip`, `.7z`, and `.rar` files.
-2. **Process Events**: Signs of suspicious command execution.
-3. **Network Events**: Connections to unauthorized external services.
-
-### Data Collection Queries and Findings
-
-#### 1. File Events Analysis
-**Query:**
-```kql
-DeviceFileEvents
-| where DeviceName contains "LAB-WIN10"
-| where FileName endswith ".zip" or FileName endswith ".7z" or FileName endswith ".rar"
-| order by Timestamp desc
-```
-
-![query1b](https://github.com/user-attachments/assets/cd26b853-e2d1-4cee-b4c7-4a4e1f1881f2)
+## **Data Exfiltration from PIP'd Employee** 
+![image (3)](https://github.com/user-attachments/assets/7e93bed4-6b56-4daa-9dea-7ad6f8306919)
 
 
-**Findings:**
-- A suspicious file `employee-data-20250106071834.zip` was identified, indicating potential data exfiltration.
-- **TTPs Identified:** [**T1560.001 - Archive Collected Data: Archive via Utility**](https://attack.mitre.org/techniques/T1560/001/)
+# 🎯 **Use Case**   
 
-#### 2. Process Events Analysis
-**Query:**
-```kql
-let specificTime = datetime(2025-01-06T07:18:46.3955129Z);
-let VMName = "LAB-WIN10";
-DeviceProcessEvents
-| where Timestamp between ((specificTime - 2m) .. (specificTime + 2m))
-| where DeviceName contains VMName
-| order by Timestamp desc
-| project Timestamp, DeviceName, ActionType, FileName, ProcessCommandLine
-```
-
-![query3](https://github.com/user-attachments/assets/f03d3d0e-2088-45fc-aed7-1a7e25fa744a)
-
-**Findings:**
-- Detected PowerShell script `exfiltratedata.ps1` installing 7zip and compressing files.
-- **TTPs Identified:**
-  - [**T1059.001 - Command and Scripting Interpreter: PowerShell**](https://attack.mitre.org/techniques/T1059/001/)
-  - [**T1560.001 - Archive Collected Data: Archive via Utility**](https://attack.mitre.org/techniques/T1560/001/)
-
-#### 3. Network Events Analysis
-**Query:**
-```kql
-let specificTime = datetime(2025-01-06T07:18:46.3955129Z);
-let VMName = "LAB-WIN10";
-DeviceNetworkEvents
-| where Timestamp between ((specificTime - 2m) .. (specificTime + 2m))
-| where DeviceName contains VMName
-| order by Timestamp desc
-| project Timestamp, RemoteIP, RemotePort, RemoteUrl, InitiatingProcessCommandLine
-```
-
-![query4](https://github.com/user-attachments/assets/ca436dda-25e2-4390-a8b5-28c523d06cb4)
-
-**Findings:**
-- Identified connections to Azure Blob storage via HTTPS (e.g., `https://sacyberrange00.blob.core.windows.net`).
-- **TTPs Identified:**
-  - [**T1567.002 - Exfiltration Over Web Service**](https://attack.mitre.org/techniques/T1567/002/)
+## 📚 **Scenario:**  
+An employee named John Doe, working in a sensitive department, was recently placed on a performance improvement plan (PIP). After displaying concerning behavior, management suspects John may be planning to steal proprietary information and leave the company. The investigation involves analyzing activities on John’s corporate device (`windows-target-1`) using Microsoft Defender for Endpoint (MDE).  
 
 ---
 
-## 3. Investigation Timeline
+## 📊 **Incident Summary and Findings**  
 
-### Chronological Events
-1. **File Activity**: Creation of `employee-data-20250106071834.zip` at `2025-01-06T07:18:34Z`.
-2. **Process Execution**: PowerShell script `exfiltratedata.ps1` executed, initiating file compression.
-3. **Network Connections**: HTTPS connection to Azure Blob storage at `2025-01-06T07:18:46Z`.
+### **Timeline Overview**  
+1. **🔍 Archiving Activity:**  
+   - **Observed Behavior:** Frequent creation of `.zip` files in a folder labeled "backup."  
+   - **Detection Query (KQL):**  
+     ```kql
+     DeviceFileEvents
+     | top 20 by Timestamp desc
+     ```
+     ```kql
+     DeviceNetworkEvents
+     | top 20 by Timestamp desc
+     ```
+     ```kql
+     DeviceProcessEvents
+     | top 20 by Timestamp desc
+     ```
+     ```kql
+     DeviceFileEvents
+     | where DeviceName == "windows-target-1"
+     | where FileName endswith ".zip"
+     | order by Timestamp desc
+     ```
+![Screenshot 2025-01-05 172716](https://github.com/user-attachments/assets/4fdf9cf4-4fed-4935-bfea-bb76d5b01144)
+
+     
+2. **⚙️ Process Analysis:**  
+   - **Observed Behavior:** I took one of the instances of a zip file being created, took the timestamp and searched under DeviceProcessEvents for anything happening 2 minutes before the archive was created and 2 mintutes after. I discoverd around the same time. apowershellscript silently installed 7zip and then used 7zip to zip up employee data into an archive.
+   - **Detection Query (KQL):**  
+
+     ```kql
+     let VMName = "windows-target-1";
+     let specificTime = datetime(2025-01-05T21:48:40.6546522Z);
+     DeviceProcessEvents
+     | where Timestamp between ((specificTime - 2m) .. (specificTime + 2m))
+     | where DeviceName == VMName
+     | order by Timestamp desc
+     | project Timestamp, DeviceName, ActionType, FileName, ProcessCommandLine
+     ```
+![Screenshot 2025-01-05 180046](https://github.com/user-attachments/assets/12d51ef5-8b84-4b41-9123-99adcbd3edbe)
+
+
+   3. **🌐 Network Exfiltration Check:**  
+   - **Observed Behavior:** No evidence of data exfiltration via network logs during the time frame.  
+
+   - **Detection Query (KQL):**  
+
+     ```kql
+     let VMName = "windows-target-1";
+     let specificTime = datetime(2025-01-05T21:48:40.6546522Z);
+     DeviceProcessEvents
+     | where Timestamp between ((specificTime - 2m) .. (specificTime + 2m))
+     | where DeviceName == VMName
+     | order by Timestamp desc
+     ```  
+
+4. **📝 Response:**  
+   - Shared findings with the manager, highlighting automated archive creation and no immediate signs of exfiltration. The device was isolated, awaiting further instructions.
 
 ---
 
-## 4. Response
+---
 
-### Actions Taken
-1. Isolated the endpoint immediately to prevent further unauthorized access or data exfiltration.
-2. Blocked unauthorized connections to external cloud storage.
-3. Removed PowerShell scripts and other malicious files from the endpoint.
-4. Coordinated with management to limit administrative privileges for the user.
+## 🛡️ **MITRE ATT&CK Framework TTPs**  
+
+| **Tactic**           | **Technique**                                                                                     | **ID**            | **Description**                                                                                                                                                 |  
+|-----------------------|---------------------------------------------------------------------------------------------------|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|  
+| 🛠️ **Execution**      | PowerShell                                                                                       | T1059.001         | PowerShell scripts were used to silently install 7-Zip and execute file compression commands.                                                                   |  
+| 📦 **Collection**      | Archive Collected Data                                                                           | T1560.001         | Employee data was compressed into `.zip` files using 7-Zip, possibly for easier handling or exfiltration.                                                       |  
+| 📂 **Exfiltration**    | Exfiltration Over Alternative Protocol                                                           | T1048             | Although no network exfiltration was detected, the technique aligns with the potential misuse of alternate protocols for stealthy data transfer.                |  
+| 🔍 **Discovery**       | Process Discovery                                                                                | T1057             | Processes were reviewed to identify activities surrounding the installation and use of 7-Zip for archiving.                                                     |  
 
 ---
 
-## 5. Documentation and Recommendations
-
-### Documentation
-- Recorded queries, findings, and associated TTPs for future training and audits.
-
-### Recommendations
-1. **Restrict Administrative Privileges:**
-   - Reduce elevated access for high-risk employees.
-   - **TTP Addressed:** **T1078 - Valid Accounts**
-2. **Enhance Monitoring:**
-   - Implement PowerShell logging for improved detection of suspicious scripts.
-   - Create detection rules specifically targeting archiving tools such as `7zip`, `WinRAR`, and `zip` utilities.
-   - Develop alerts for large file transfers or unusual file compression activity.
-   - Create detection rules to identify unauthorized silent installations by monitoring specific installer flags such as `/S` or `/quiet` in command lines.
-   - **TTP Addressed:** **T1059.001 - Command and Scripting Interpreter: PowerShell**
-3. **Strengthen Exfiltration Detection:**
-   - Tighten controls on unauthorized cloud services and external connections.
-   - Enhance monitoring for connections to known file-sharing platforms and cloud storage services.
-   - **TTP Addressed:** **T1567.002 - Exfiltration Over Web Service**
-4. **Employee-Specific Actions:**
-   - Conduct a formal interview with Mike Wiley to address the findings and provide an opportunity for explanation.
-   - Mandate participation in cybersecurity awareness training to reinforce acceptable use policies.
-   - Place Mike Wiley under heightened monitoring for a defined period to ensure compliance with company policies.
-   - Involve HR to determine whether disciplinary actions or reassignment are necessary based on intent and severity.
+### 🧑‍💻 **Next Steps**  
+1. Monitor John’s account activity for unusual access or privilege escalation.  
+2. Implement DLP (Data Loss Prevention) measures to alert on potential data exfiltration.  
+3. Escalate findings to management and recommend a follow-up review of John's device for additional forensic artifacts.  
 
 ---
 
-This report simplifies and highlights the detection and mitigation process for a potential insider threat scenario, showcasing the effectiveness of Microsoft Defender for Endpoint and KQL in investigating and responding to suspected malicious activities.
+## Steps to Reproduce:
+1. Provision a virtual machine with a public IP address
+2. Ensure the device is actively communicating or available on the internet. (Test ping, etc.)
+3. Onboard the device to Microsoft Defender for Endpoint
+4. Verify the relevant logs (e.g., network traffic logs, exposure alerts) are being collected in MDE.
+5. Execute the KQL query in the MDE advanced hunting to confirm detection.
+
+---
+
+## Created By:
+- **Author Name**: EL Forestal
+- **Author Contact**: https://www.linkedin.com/in/forestal
+- **Date**: Jan 5, 2025
+---
+
+## Revision History:
+| **Version** | **Changes**                   | **Date**         | **Modified By**   |
+|-------------|-------------------------------|------------------|-------------------|
+| 1.0         | Initial draft                  | `Jan 5, 2025`  | `Trevino Parker`   
