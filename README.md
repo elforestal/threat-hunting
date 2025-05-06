@@ -105,8 +105,3 @@ An employee named John Doe, working in a sensitive department, was recently plac
 - **Author Contact**: https://www.linkedin.com/in/forestal
 - **Date**: Jan 5, 2025
 ---
-
-## Revision History:
-| **Version** | **Changes**                   | **Date**         | **Modified By**   |
-|-------------|-------------------------------|------------------|-------------------|
-| 1.0         | Initial draft                  | `Jan 5, 2025`  | `Trevino Parker`   
